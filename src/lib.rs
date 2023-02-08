@@ -1,11 +1,27 @@
 #![deny(clippy::all)]
 
+use crate::csv::merge::Merger;
+
 #[macro_use]
 extern crate napi_derive;
 
 mod csv;
 
 #[napi]
-pub fn sum(a: i32, b: i32) -> i32 {
-    a + b
+pub fn sum() -> i32 {
+    let merger = Merger::new(
+        "./__test__/fixtures/list1-sorted.csv".to_string(),
+        "./__test__/fixtures/list2-sorted.csv".to_string(),
+        // "./1.sorted.tsv".to_string(),
+        // "./2.sorted.tsv".to_string(),
+        csv::merge::MergeStrategy::And,
+        "key".to_string(),
+        "key".to_string(),
+        true,
+        "result.tsv".to_string()
+    );
+
+    merger.handle();
+
+    1
 }

@@ -2,7 +2,7 @@ mod csv;
 use crate::csv::merge::Merger;
 
 fn main() {
-    let merger = Merger::create(
+    let merger = Merger::new(
         "./__test__/fixtures/list1-sorted.csv".to_string(),
         "./__test__/fixtures/list2-sorted.csv".to_string(),
         // "./1.sorted.tsv".to_string(),

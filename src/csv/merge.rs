@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
-use std::collections::{ HashSet, HashMap };
-use std::{ fs::File };
+use std::collections::{ HashMap, HashSet };
+use std::fs::File;
 
-use csv::{ Reader, ReaderBuilder, WriterBuilder, Writer, ByteRecord };
+use csv::{ ByteRecord, ByteRecordsIntoIter, Error, Reader, ReaderBuilder, Writer, WriterBuilder };
 
 #[derive(PartialEq)]
 pub enum MergeStrategy {
@@ -22,7 +22,9 @@ pub struct Merger {
 }
 
 fn to_number(x: &[u8]) -> i64 {
-    String::from_utf8(x.to_vec()).unwrap().parse::<i64>().unwrap()
+    let string = String::from_utf8(x.to_vec()).expect(format!("Parse string: {:?}", x).as_str());
+
+    string.parse::<i64>().expect(format!("Parse number: {}", string).as_str())
 }
 
 impl Merger {
@@ -65,15 +67,16 @@ impl Merger {
         );
 
         let mut writer = self.get_writer();
+
         writer.write_record(&output_headers).expect("write output headers");
 
         let left_col_index = self
             .get_header_pos(&right_headers, &self.left_key)
-            .expect("Has column in left file");
+            .expect(format!("Has column {} in left file", self.left_key).as_str());
 
         let right_col_index = self
             .get_header_pos(&right_headers, &self.right_key)
-            .expect("Has column in right file");
+            .expect(format!("Has column {} in right file", self.right_key).as_str());
 
         let mut left_lines = left_reader.into_byte_records();
         let mut right_lines = right_reader.into_byte_records();
@@ -87,6 +90,7 @@ impl Merger {
         let mut right_readed = true;
 
         let mut need_left_push;
+        let mut need_right_push;
         let mut old_left_eq_right;
         let mut need_read_left;
 
@@ -110,30 +114,29 @@ impl Merger {
                 Some(v) => v == right_value,
                 _ => false,
             };
-            need_read_left = old_left_eq_right && cmp != Ordering::Equal;
+            need_read_left = old_left_eq_right && cmp.is_ne();
 
             need_left_push = match self.strategy {
-                MergeStrategy::And => left_readed && cmp == Ordering::Equal,
+                MergeStrategy::And => left_readed && cmp.is_eq(),
                 MergeStrategy::Or => left_readed && !need_read_left,
                 MergeStrategy::AndNot => left_readed && cmp == Ordering::Less && !need_read_left,
             };
+            need_right_push = match self.strategy {
+                MergeStrategy::And => right_readed && (cmp.is_eq() || old_left_eq_right),
+                MergeStrategy::Or => right_readed,
+                MergeStrategy::AndNot => false,
+            };
             if need_left_push {
-                // println!("left: {:?}", left_record);
                 self.write_row(&mut writer, &map_left_headers_to_union, left_record);
                 left_readed = false;
             }
-            let need_right_push = match self.strategy {
-                MergeStrategy::Or => right_readed,
-                MergeStrategy::AndNot => false,
-                MergeStrategy::And => right_readed && (cmp == Ordering::Equal || old_left_eq_right),
-            };
             if need_right_push {
                 // println!("right: {:?} ", right_record);
                 self.write_row(&mut writer, &map_right_headers_to_union, right_record);
                 right_readed = false;
             }
 
-            if (cmp == Ordering::Less || cmp == Ordering::Equal) && !need_read_left {
+            if cmp.is_le() && !need_read_left {
                 left_readed = true;
                 // println!("read left");
                 old_left_value = Some(left_value.to_owned());
@@ -192,7 +195,10 @@ impl Merger {
     }
 
     fn build_reader(&self, path: &String) -> Reader<File> {
-        ReaderBuilder::new().delimiter(b'\t').from_path(path).expect("Open file")
+        ReaderBuilder::new()
+            .delimiter(b'\t')
+            .from_path(path)
+            .expect(format!("Open file: {}", path).as_str())
     }
 
     fn get_headers(&self, reader: &mut Reader<File>) -> Vec<String> {

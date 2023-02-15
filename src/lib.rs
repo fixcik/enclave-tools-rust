@@ -8,7 +8,7 @@ extern crate napi_derive;
 mod csv;
 
 #[napi]
-pub fn sum() -> i32 {
+pub fn sum()  {
     let merger = Merger::new(
         "./__test__/fixtures/list1-sorted.csv".to_string(),
         "./__test__/fixtures/list2-sorted.csv".to_string(),
@@ -23,5 +23,4 @@ pub fn sum() -> i32 {
 
     merger.handle();
 
-    1
 }

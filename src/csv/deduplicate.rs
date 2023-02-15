@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{ fs::File, collections::HashMap };
 
 use csv::{ ByteRecord, Writer };
 
@@ -10,8 +10,14 @@ pub enum DeduplicateStrategy {
     CrossJoin,
 }
 
+#[derive(PartialEq, Debug)]
+pub enum Side {
+    Left,
+    Right,
+}
+
 pub trait StrategyHandler {
-    fn add_row(&mut self, row: ByteRecord) -> Result<(), csv::Error>;
+    fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error>;
     fn flush(&mut self) -> Result<(), csv::Error>;
 }
 
@@ -20,7 +26,7 @@ struct KeepAllStrategyHandler {
 }
 
 impl StrategyHandler for KeepAllStrategyHandler {
-    fn add_row(&mut self, row: ByteRecord) -> Result<(), csv::Error> {
+    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
         self.writer.write_record(&row)
     }
     fn flush(&mut self) -> Result<(), csv::Error> {
@@ -47,7 +53,7 @@ impl FirstOnlyStrategyHandler {
 }
 
 impl StrategyHandler for FirstOnlyStrategyHandler {
-    fn add_row(&mut self, row: ByteRecord) -> Result<(), csv::Error> {
+    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
         let eq = match &self.last_record {
             Some(lr) => lr.get(self.key_index).unwrap() == row.get(self.key_index).unwrap(),
             None => false,
@@ -83,12 +89,6 @@ pub struct ReduceStrategyHandler {
     writer: Writer<File>,
     key_index: usize,
     group: Option<Vec<ByteRecord>>,
-}
-
-fn to_number(x: &[u8]) -> i64 {
-    let string = String::from_utf8(x.to_vec()).expect(format!("Parse string: {:?}", x).as_str());
-
-    string.parse::<i64>().expect(format!("Parse number: {}", string).as_str())
 }
 
 impl ReduceStrategyHandler {
@@ -127,7 +127,7 @@ impl ReduceStrategyHandler {
 }
 
 impl StrategyHandler for ReduceStrategyHandler {
-    fn add_row(&mut self, row: ByteRecord) -> Result<(), csv::Error> {
+    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
         let key = row.get(self.key_index).unwrap();
         if let Some(group) = &mut self.group {
             let group_key = group[0].get(self.key_index).unwrap();
@@ -143,5 +143,93 @@ impl StrategyHandler for ReduceStrategyHandler {
 
     fn flush(&mut self) -> Result<(), csv::Error> {
         self.flush_group()
+    }
+}
+
+pub struct CrossJoinStrategyHandler {
+    writer: Writer<File>,
+    last_row: Option<ByteRecord>,
+    duplicates: Vec<(ByteRecord, Side)>,
+    key_index: usize,
+}
+
+impl CrossJoinStrategyHandler {
+    pub fn build(writer: Writer<File>, key_index: usize) -> Self {
+        CrossJoinStrategyHandler {
+            writer,
+            last_row: None,
+            duplicates: vec![],
+            key_index,
+        }
+    }
+
+    fn flush_duplicates(&mut self) -> Result<(), csv::Error> {
+        let left_records: Vec<ByteRecord> = self.duplicates
+            .iter()
+            .filter(|x| x.1 == Side::Left)
+            .map(|x| x.0.clone())
+            .collect();
+
+        let right_records: Vec<ByteRecord> = self.duplicates
+            .iter()
+            .filter(|x| x.1 == Side::Right)
+            .map(|x| x.0.clone())
+            .collect();
+
+        if right_records.len() > 0 && left_records.len() > 0 {
+            for left_record in left_records {
+                for right_record in &right_records {
+                    let mut computed: Vec<&[u8]> = left_record.iter().collect();
+                    for (i, field) in right_record.iter().enumerate() {
+                        if !field.is_empty() {
+                            computed[i] = field;
+                        }
+                    }
+                    self.writer.write_byte_record(&ByteRecord::from_iter(computed))?;
+                }
+            }
+        } else if right_records.len() > 0 {
+            for right_record in right_records {
+                self.writer.write_byte_record(&right_record)?;
+            }
+        } else {
+            for left_record in left_records {
+                self.writer.write_byte_record(&left_record)?;
+            }
+        }
+
+        self.duplicates = vec![];
+        Ok(())
+    }
+}
+
+impl StrategyHandler for CrossJoinStrategyHandler {
+    fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
+        let is_equal;
+        if let Some(last_row) = self.last_row.clone() {
+            is_equal = last_row.get(self.key_index).unwrap() == row.get(self.key_index).unwrap();
+            if !is_equal && self.duplicates.len() > 0 {
+                self.flush_duplicates()?;
+            }
+            if (is_equal && self.duplicates.len() > 0) || (!is_equal && self.duplicates.len() == 0) {
+                self.duplicates.push((row.clone(), side));
+            } else {
+                self.flush_duplicates()?;
+            }
+        } else {
+            self.duplicates.push((row.clone(), side));
+        }
+        self.last_row = Some(row.clone());
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), csv::Error> {
+        // if self.duplicates.len() > 0 {
+        self.flush_duplicates()?;
+        // } else if let Some(last_row) = &self.last_row {
+        //     self.writer.write_byte_record(&last_row)?;
+        // }
+
+        Ok(())
     }
 }

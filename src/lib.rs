@@ -5,10 +5,10 @@ use crate::csv::merge::Merger;
 #[macro_use]
 extern crate napi_derive;
 
-mod csv;
+pub mod csv;
 
 #[napi]
-pub fn sum()  {
+pub fn sum() {
     let merger = Merger::new(
         "./__test__/fixtures/list1-sorted.csv".to_string(),
         "./__test__/fixtures/list2-sorted.csv".to_string(),
@@ -22,5 +22,4 @@ pub fn sum()  {
     );
 
     merger.handle();
-
 }

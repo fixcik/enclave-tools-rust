@@ -4,22 +4,21 @@ use ::csv::ByteRecord;
 use ::csv::{ WriterBuilder };
 use crate::csv::deduplicate::StrategyHandler;
 
-use crate::csv::deduplicate::{ ReduceStrategyHandler, CrossJoinStrategyHandler, Side };
+use crate::csv::deduplicate::{ RemoveSimilarStrategyHandler, CrossJoinStrategyHandler, Side };
 
 fn main() {
     let writer = WriterBuilder::new().delimiter(0x09).from_path("./1.tsv").expect("open file");
 
-    let mut handler = CrossJoinStrategyHandler::build(writer, 0);
+    let mut handler = RemoveSimilarStrategyHandler::build(writer, 0);
 
     handler.add_row(ByteRecord::from(vec!["0", "1", "3", ""]), Side::Left).expect("add row");
     handler.add_row(ByteRecord::from(vec!["1", "2", "", ""]), Side::Left).expect("add row");
-    handler.add_row(ByteRecord::from(vec!["1", "5", "", ""]), Side::Left).expect("add row");
-    handler.add_row(ByteRecord::from(vec!["1", "", "4", "5"]), Side::Right).expect("add row");
-    handler.add_row(ByteRecord::from(vec!["1", "4", "", ""]), Side::Left).expect("add row");
+    handler.add_row(ByteRecord::from(vec!["1", "2", "", ""]), Side::Left).expect("add row");
+    handler.add_row(ByteRecord::from(vec!["1", "2", "", ""]), Side::Left).expect("add row");
     handler.add_row(ByteRecord::from(vec!["1", "", "4", "7"]), Side::Right).expect("add row");
     handler.add_row(ByteRecord::from(vec!["2", "3", "5", ""]), Side::Left).expect("add row");
     handler.add_row(ByteRecord::from(vec!["3", "1", "", ""]), Side::Left).expect("add row");
-    handler.add_row(ByteRecord::from(vec!["3", "2", "", ""]), Side::Left).expect("add row");
+    handler.add_row(ByteRecord::from(vec!["3", "1", "", ""]), Side::Left).expect("add row");
     handler.add_row(ByteRecord::from(vec!["3", "", "6", "7"]), Side::Right).expect("add row");
     handler.add_row(ByteRecord::from(vec!["3", "", "5", "5"]), Side::Right).expect("add row");
     handler.add_row(ByteRecord::from(vec!["3", "", "4", "4"]), Side::Right).expect("add row");

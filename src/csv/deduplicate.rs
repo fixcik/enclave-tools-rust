@@ -1,4 +1,4 @@
-use std::{ fs::File, collections::HashMap };
+use std::{ fs::File };
 
 use csv::{ ByteRecord, Writer };
 
@@ -206,7 +206,7 @@ impl CrossJoinStrategyHandler {
 impl StrategyHandler for CrossJoinStrategyHandler {
     fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
         let is_equal;
-        if let Some(last_row) = self.last_row.clone() {
+        if let Some(last_row) = &self.last_row {
             is_equal = last_row.get(self.key_index).unwrap() == row.get(self.key_index).unwrap();
             if !is_equal && self.duplicates.len() > 0 {
                 self.flush_duplicates()?;
@@ -219,17 +219,67 @@ impl StrategyHandler for CrossJoinStrategyHandler {
         } else {
             self.duplicates.push((row.clone(), side));
         }
-        self.last_row = Some(row.clone());
+        self.last_row = Some(row);
         Ok(())
     }
 
     fn flush(&mut self) -> Result<(), csv::Error> {
-        // if self.duplicates.len() > 0 {
         self.flush_duplicates()?;
-        // } else if let Some(last_row) = &self.last_row {
-        //     self.writer.write_byte_record(&last_row)?;
-        // }
+        Ok(())
+    }
+}
 
+pub struct RemoveSimilarStrategyHandler {
+    writer: Writer<File>,
+    last_row: Option<ByteRecord>,
+    duplicates: Vec<ByteRecord>,
+    key_index: usize,
+}
+
+impl RemoveSimilarStrategyHandler {
+    pub fn build(writer: Writer<File>, key_index: usize) -> Self {
+        RemoveSimilarStrategyHandler {
+            writer,
+            last_row: None,
+            duplicates: vec![],
+            key_index,
+        }
+    }
+
+    fn flush_duplicates(&mut self) -> Result<(), csv::Error> {
+        self.duplicates.dedup();
+
+        for record in &self.duplicates {
+            self.writer.write_byte_record(record)?;
+        }
+
+        self.duplicates = vec![];
+        Ok(())
+    }
+}
+
+impl StrategyHandler for RemoveSimilarStrategyHandler {
+    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
+        let is_equal;
+        if let Some(last_row) = &self.last_row {
+            is_equal = last_row.get(self.key_index).unwrap() == row.get(self.key_index).unwrap();
+            if !is_equal && self.duplicates.len() > 0 {
+                self.flush_duplicates()?;
+            }
+            if (is_equal && self.duplicates.len() > 0) || (!is_equal && self.duplicates.len() == 0) {
+                self.duplicates.push(row.clone());
+            } else {
+                self.flush_duplicates()?;
+            }
+        } else {
+            self.duplicates.push(row.clone());
+        }
+        self.last_row = Some(row);
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), csv::Error> {
+        self.flush_duplicates()?;
         Ok(())
     }
 }

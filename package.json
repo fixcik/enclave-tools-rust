@@ -1,5 +1,5 @@
 {
-  "name": "enclave-tools-rust",
+  "name": "@aggregion/enclave-tools-rust",
   "version": "0.0.0",
   "main": "index.js",
   "types": "index.d.ts",

@@ -2,15 +2,8 @@ use std::{ fs::File };
 
 use csv::{ ByteRecord, Writer };
 
-#[derive(Clone, Copy)]
-pub enum DeduplicateStrategy {
-    KeepAll,
-    KeepFirst,
-    RemoveSimilar,
-    Reduce,
-    CrossJoin,
-    CrossJoinAndRemoveSimilar,
-}
+use crate::DeduplicateStrategy;
+
 pub enum DeduplicateStrategyHandler<'a> {
     KeepAll(KeepAllStrategyHandler<'a>),
     FirstOnly(KeepFirstStrategyHandler<'a>),

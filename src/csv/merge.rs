@@ -5,14 +5,9 @@ use std::vec;
 
 use csv::{ ByteRecord, ByteRecordsIntoIter, Reader, ReaderBuilder, Writer, WriterBuilder };
 
-use super::deduplicate::{ DeduplicateStrategy, Side };
+use crate::{ MergeStrategy, DeduplicateStrategy };
 
-#[derive(PartialEq)]
-pub enum MergeStrategy {
-    Or,
-    And,
-    AndNot,
-}
+use super::deduplicate::{ Side };
 
 pub struct Merger {
     left_file_path: String,
@@ -55,11 +50,11 @@ impl Merger {
     }
 
     pub fn handle(self) -> Result<(), csv::Error> {
-        let mut left_reader = self.get_left_reader();
-        let mut right_reader = self.get_right_reader();
+        let mut left_reader = self.get_left_reader()?;
+        let mut right_reader = self.get_right_reader()?;
 
-        let left_headers = self.get_headers(&mut left_reader);
-        let right_headers = self.get_headers(&mut right_reader);
+        let left_headers = self.get_headers(&mut left_reader)?;
+        let right_headers = self.get_headers(&mut right_reader)?;
         let output_headers = self.get_output_headers(&left_headers, &right_headers);
 
         let map_left_headers_to_union = self.map_file_headers_to_output(
@@ -200,27 +195,24 @@ impl Merger {
         WriterBuilder::new().delimiter(b'\t').from_path(&self.output).expect("open output file")
     }
 
-    fn get_left_reader(&self) -> Reader<File> {
+    fn get_left_reader(&self) -> Result<Reader<File>, csv::Error> {
         self.build_reader(&self.left_file_path)
     }
-    fn get_right_reader(&self) -> Reader<File> {
+    fn get_right_reader(&self) -> Result<Reader<File>, csv::Error> {
         self.build_reader(&self.right_file_path)
     }
 
-    fn build_reader(&self, path: &String) -> Reader<File> {
-        ReaderBuilder::new()
-            .delimiter(b'\t')
-            .from_path(path)
-            .expect(format!("Open file: {}", path).as_str())
+    fn build_reader(&self, path: &String) -> Result<Reader<File>, csv::Error> {
+        ReaderBuilder::new().delimiter(b'\t').from_path(path)
     }
 
-    fn get_headers(&self, reader: &mut Reader<File>) -> Vec<String> {
-        reader
-            .headers()
-            .expect("Left headers")
+    fn get_headers(&self, reader: &mut Reader<File>) -> Result<Vec<String>, csv::Error> {
+        let record: Vec<String> = reader
+            .headers()?
             .iter()
             .map(|s| s.to_string())
-            .collect()
+            .collect();
+        Ok(record)
     }
 
     fn get_output_headers<'a>(

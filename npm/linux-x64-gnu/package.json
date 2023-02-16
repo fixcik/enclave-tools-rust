@@ -1,5 +1,5 @@
 {
-  "name": "enclave-tools-rust-linux-x64-gnu",
+  "name": "@aggregion/enclave-tools-rust-linux-x64-gnu",
   "version": "0.1.0",
   "os": [
     "linux"

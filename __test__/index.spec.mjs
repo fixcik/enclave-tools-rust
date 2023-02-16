@@ -7,7 +7,7 @@ import { DeduplicateStrategy, MergeStrategy, merge } from "../index.js";
 
 async function getTempFilePath() {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmp-"));
-  const tempFileName = "temp-file.txt";
+  const tempFileName = "output.txt";
   return path.join(tempDir, tempFileName);
 }
 
@@ -30,6 +30,7 @@ for (let mergeStrategy in MergeStrategy) {
         )
       );
       t.snapshot(await fs.readFile(output, { encoding: "ascii" }));
+      await fs.rm(output);
     });
   }
 }

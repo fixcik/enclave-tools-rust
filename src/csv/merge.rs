@@ -3,7 +3,7 @@ use std::collections::{ HashMap, HashSet };
 use std::fs::File;
 use std::vec;
 
-use csv::{ ByteRecord, ByteRecordsIntoIter, Error, Reader, ReaderBuilder, Writer, WriterBuilder };
+use csv::{ ByteRecord, ByteRecordsIntoIter, Reader, ReaderBuilder, Writer, WriterBuilder };
 
 use super::deduplicate::{ DeduplicateStrategy, Side };
 
@@ -76,13 +76,9 @@ impl Merger {
             .get_header_pos(&output_headers, &self.left_key)
             .expect(format!("Has column {} in left file", self.left_key).as_str());
 
-        println!("{} has index {} in {:?}", self.left_key, left_key_index, output_headers);
-
         let right_key_index = self
             .get_header_pos(&output_headers, &self.right_key)
             .expect(format!("Has column {} in right file", self.right_key).as_str());
-
-        println!("{} has index {} in {:?}", self.right_key, right_key_index, output_headers);
 
         let mut writer = self.get_writer();
 
@@ -116,7 +112,6 @@ impl Merger {
 
         let mut counter = 0;
         while let (Some(left_record), Some(right_record)) = (&left_line, &right_line) {
-            println!("{:?} {:?}", left_record, right_record);
             left_value = left_record.get(left_key_index).unwrap();
             right_value = right_record.get(right_key_index).unwrap();
             counter += 1;
@@ -135,21 +130,21 @@ impl Merger {
 
             need_left_push = match self.merge_strategy {
                 MergeStrategy::And => left_readed && cmp.is_eq(),
-                MergeStrategy::Or => left_readed && !need_read_left,
+                MergeStrategy::Or => left_readed && cmp.is_le() && !need_read_left,
                 MergeStrategy::AndNot => left_readed && cmp == Ordering::Less && !need_read_left,
             };
             need_right_push = match self.merge_strategy {
                 MergeStrategy::And => right_readed && (cmp.is_eq() || old_left_eq_right),
-                MergeStrategy::Or => right_readed,
+                MergeStrategy::Or => right_readed && cmp.is_ge(),
                 MergeStrategy::AndNot => false,
             };
+
             if need_left_push {
                 deduplicate_handler.add_row(left_record.clone(), Side::Left)?;
                 // self.write_row(&mut writer, &map_left_headers_to_union, left_record);
                 left_readed = false;
             }
             if need_right_push {
-                // println!("right: {:?} ", right_record);
                 deduplicate_handler.add_row(right_record.clone(), Side::Right)?;
                 // self.write_row(&mut writer, &map_right_headers_to_union, right_record);
                 right_readed = false;
@@ -157,12 +152,10 @@ impl Merger {
 
             if cmp.is_le() && !need_read_left {
                 left_readed = true;
-                // println!("read left");
                 old_left_value = Some(left_value.to_owned());
                 left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
             } else {
                 right_readed = true;
-                // println!("read right");
                 right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
             }
         }
@@ -172,9 +165,7 @@ impl Merger {
                 if left_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or | MergeStrategy::AndNot => {
-                            // println!("left: {:?}", left_record);
                             deduplicate_handler.add_row(left_record.clone(), Side::Left)?;
-                            // self.write_row(&mut writer, &map_left_headers_to_union, left_record);
                         }
                         _ => (),
                     }
@@ -190,9 +181,7 @@ impl Merger {
                 if right_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or => {
-                            // println!("right: {:?}", right_record);
                             deduplicate_handler.add_row(right_record.clone(), Side::Right)?;
-                            // self.write_row(&mut writer, &map_right_headers_to_union, right_record);
                         }
                         _ => (),
                     }
@@ -278,7 +267,6 @@ impl Merger {
         mapping: &HashMap<usize, Option<usize>>
     ) -> Option<ByteRecord> {
         if let Some(Ok(record)) = iter.next() {
-            println!("rec: {:?}", record);
             let mut values: Vec<&[u8]> = Vec::with_capacity(mapping.len());
             for i in 0..mapping.len() {
                 let rec_key = *mapping.get(&i).unwrap();

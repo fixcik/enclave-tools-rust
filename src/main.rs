@@ -9,7 +9,7 @@ fn main() {
         // "./1.sorted.tsv".to_string(),
         // "./2.sorted.tsv".to_string(),
         csv::merge::MergeStrategy::And,
-        csv::deduplicate::DeduplicateStrategy::KeepFirst,
+        csv::deduplicate::DeduplicateStrategy::CrossJoinAndRemoveSimilar,
         "key".to_string(),
         "key".to_string(),
         true,

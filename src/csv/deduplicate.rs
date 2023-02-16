@@ -9,6 +9,7 @@ pub enum DeduplicateStrategy {
     RemoveSimilar,
     Reduce,
     CrossJoin,
+    CrossJoinAndRemoveSimilar,
 }
 pub enum DeduplicateStrategyHandler<'a> {
     KeepAll(KeepAllStrategyHandler<'a>),
@@ -16,6 +17,7 @@ pub enum DeduplicateStrategyHandler<'a> {
     RemoveSimilar(RemoveSimilarStrategyHandler<'a>),
     Reduce(ReduceStrategyHandler<'a>),
     CrossJoin(CrossJoinStrategyHandler<'a>),
+    CrossJoinAndRemoveSimilar(CrossJoinStrategyHandler<'a>),
 }
 
 impl<'a> DeduplicateStrategyHandler<'a> {
@@ -26,6 +28,8 @@ impl<'a> DeduplicateStrategyHandler<'a> {
             DeduplicateStrategyHandler::RemoveSimilar(handler) => handler.add_row(row, side),
             DeduplicateStrategyHandler::Reduce(handler) => handler.add_row(row, side),
             DeduplicateStrategyHandler::CrossJoin(handler) => handler.add_row(row, side),
+            DeduplicateStrategyHandler::CrossJoinAndRemoveSimilar(handler) =>
+                handler.add_row(row, side),
         }
     }
 
@@ -36,6 +40,7 @@ impl<'a> DeduplicateStrategyHandler<'a> {
             DeduplicateStrategyHandler::RemoveSimilar(handler) => handler.flush(),
             DeduplicateStrategyHandler::Reduce(handler) => handler.flush(),
             DeduplicateStrategyHandler::CrossJoin(handler) => handler.flush(),
+            DeduplicateStrategyHandler::CrossJoinAndRemoveSimilar(handler) => handler.flush(),
         }
     }
 }
@@ -64,7 +69,11 @@ impl DeduplicateStrategy {
                 ),
             DeduplicateStrategy::CrossJoin =>
                 DeduplicateStrategyHandler::CrossJoin(
-                    CrossJoinStrategyHandler::build(writer, left_key_index, right_key_index)
+                    CrossJoinStrategyHandler::build(writer, left_key_index, right_key_index, false)
+                ),
+            DeduplicateStrategy::CrossJoinAndRemoveSimilar =>
+                DeduplicateStrategyHandler::CrossJoin(
+                    CrossJoinStrategyHandler::build(writer, left_key_index, right_key_index, true)
                 ),
         }
     }
@@ -95,7 +104,6 @@ impl<'a> KeepAllStrategyHandler<'a> {
 
 impl<'a> StrategyHandler for KeepAllStrategyHandler<'a> {
     fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
-        println!("{:?}", row);
         self.writer.write_record(&row)
     }
     fn flush(&mut self) -> Result<(), csv::Error> {
@@ -253,13 +261,15 @@ pub struct CrossJoinStrategyHandler<'a> {
     duplicates: Vec<(ByteRecord, Side)>,
     left_key_index: usize,
     right_key_index: usize,
+    remove_similar: bool,
 }
 
 impl<'a> CrossJoinStrategyHandler<'a> {
     pub fn build(
         writer: &'a mut Writer<File>,
         left_key_index: usize,
-        right_key_index: usize
+        right_key_index: usize,
+        remove_similar: bool
     ) -> Self {
         CrossJoinStrategyHandler {
             writer,
@@ -267,10 +277,16 @@ impl<'a> CrossJoinStrategyHandler<'a> {
             duplicates: vec![],
             left_key_index,
             right_key_index,
+            remove_similar,
         }
     }
 
     fn flush_duplicates(&mut self) -> Result<(), csv::Error> {
+        if self.remove_similar {
+            self.duplicates.sort_by(|a, b| a.0.as_slice().cmp(&b.0.as_slice()));
+            self.duplicates.dedup();
+        }
+
         let left_records: Vec<ByteRecord> = self.duplicates
             .iter()
             .filter(|x| x.1 == Side::Left)
@@ -378,6 +394,7 @@ impl<'a> RemoveSimilarStrategyHandler<'a> {
     }
 
     fn flush_duplicates(&mut self) -> Result<(), csv::Error> {
+        self.duplicates.sort_by(|a, b| a.as_slice().cmp(&b.as_slice()));
         self.duplicates.dedup();
 
         for record in &self.duplicates {

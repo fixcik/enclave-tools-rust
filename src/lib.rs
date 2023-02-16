@@ -9,12 +9,11 @@ pub mod csv;
 
 #[napi]
 pub fn sum() {
-    let merger = Merger::new(
+    let merger = Merger::create(
         "./__test__/fixtures/list1-sorted.csv".to_string(),
         "./__test__/fixtures/list2-sorted.csv".to_string(),
-        // "./1.sorted.tsv".to_string(),
-        // "./2.sorted.tsv".to_string(),
         csv::merge::MergeStrategy::And,
+        csv::deduplicate::DeduplicateStrategy::CrossJoin,
         "key".to_string(),
         "key".to_string(),
         true,

@@ -2,15 +2,75 @@ use std::{ fs::File };
 
 use csv::{ ByteRecord, Writer };
 
+#[derive(Clone, Copy)]
 pub enum DeduplicateStrategy {
     KeepAll,
-    FirstOnly,
+    KeepFirst,
     RemoveSimilar,
     Reduce,
     CrossJoin,
 }
+pub enum DeduplicateStrategyHandler<'a> {
+    KeepAll(KeepAllStrategyHandler<'a>),
+    FirstOnly(KeepFirstStrategyHandler<'a>),
+    RemoveSimilar(RemoveSimilarStrategyHandler<'a>),
+    Reduce(ReduceStrategyHandler<'a>),
+    CrossJoin(CrossJoinStrategyHandler<'a>),
+}
 
-#[derive(PartialEq, Debug)]
+impl<'a> DeduplicateStrategyHandler<'a> {
+    pub fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
+        match self {
+            DeduplicateStrategyHandler::KeepAll(handler) => handler.add_row(row, side),
+            DeduplicateStrategyHandler::FirstOnly(handler) => handler.add_row(row, side),
+            DeduplicateStrategyHandler::RemoveSimilar(handler) => handler.add_row(row, side),
+            DeduplicateStrategyHandler::Reduce(handler) => handler.add_row(row, side),
+            DeduplicateStrategyHandler::CrossJoin(handler) => handler.add_row(row, side),
+        }
+    }
+
+    pub fn flush(&mut self) -> Result<(), csv::Error> {
+        match self {
+            DeduplicateStrategyHandler::KeepAll(handler) => handler.flush(),
+            DeduplicateStrategyHandler::FirstOnly(handler) => handler.flush(),
+            DeduplicateStrategyHandler::RemoveSimilar(handler) => handler.flush(),
+            DeduplicateStrategyHandler::Reduce(handler) => handler.flush(),
+            DeduplicateStrategyHandler::CrossJoin(handler) => handler.flush(),
+        }
+    }
+}
+
+impl DeduplicateStrategy {
+    pub fn create<'a>(
+        strategy: DeduplicateStrategy,
+        writer: &'a mut Writer<File>,
+        left_key_index: usize,
+        right_key_index: usize
+    ) -> DeduplicateStrategyHandler {
+        match strategy {
+            DeduplicateStrategy::KeepAll =>
+                DeduplicateStrategyHandler::KeepAll(KeepAllStrategyHandler::build(writer)),
+            DeduplicateStrategy::KeepFirst =>
+                DeduplicateStrategyHandler::FirstOnly(
+                    KeepFirstStrategyHandler::build(writer, left_key_index, right_key_index)
+                ),
+            DeduplicateStrategy::RemoveSimilar =>
+                DeduplicateStrategyHandler::RemoveSimilar(
+                    RemoveSimilarStrategyHandler::build(writer, left_key_index, right_key_index)
+                ),
+            DeduplicateStrategy::Reduce =>
+                DeduplicateStrategyHandler::Reduce(
+                    ReduceStrategyHandler::build(writer, left_key_index, right_key_index)
+                ),
+            DeduplicateStrategy::CrossJoin =>
+                DeduplicateStrategyHandler::CrossJoin(
+                    CrossJoinStrategyHandler::build(writer, left_key_index, right_key_index)
+                ),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum Side {
     Left,
     Right,
@@ -21,12 +81,21 @@ pub trait StrategyHandler {
     fn flush(&mut self) -> Result<(), csv::Error>;
 }
 
-struct KeepAllStrategyHandler {
-    writer: Writer<File>,
+pub struct KeepAllStrategyHandler<'a> {
+    writer: &'a mut Writer<File>,
 }
 
-impl StrategyHandler for KeepAllStrategyHandler {
+impl<'a> KeepAllStrategyHandler<'a> {
+    pub fn build(writer: &'a mut Writer<File>) -> Self {
+        KeepAllStrategyHandler {
+            writer,
+        }
+    }
+}
+
+impl<'a> StrategyHandler for KeepAllStrategyHandler<'a> {
     fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
+        println!("{:?}", row);
         self.writer.write_record(&row)
     }
     fn flush(&mut self) -> Result<(), csv::Error> {
@@ -34,34 +103,58 @@ impl StrategyHandler for KeepAllStrategyHandler {
     }
 }
 
-pub struct FirstOnlyStrategyHandler {
-    writer: Writer<File>,
-    last_record: Option<ByteRecord>,
-    key_index: usize,
+pub struct KeepFirstStrategyHandler<'a> {
+    writer: &'a mut Writer<File>,
+    last_record: Option<(ByteRecord, Side)>,
+    left_key_index: usize,
+    right_key_index: usize,
     duplicates_counter: u32,
 }
 
-impl FirstOnlyStrategyHandler {
-    pub fn build(writer: Writer<File>, key_index: usize) -> Self {
-        FirstOnlyStrategyHandler {
+impl<'a> KeepFirstStrategyHandler<'a> {
+    pub fn build(
+        writer: &'a mut Writer<File>,
+        left_key_index: usize,
+        right_key_index: usize
+    ) -> Self {
+        KeepFirstStrategyHandler {
             writer,
             last_record: None,
-            key_index,
+            left_key_index,
+            right_key_index,
             duplicates_counter: 0,
         }
     }
 }
 
-impl StrategyHandler for FirstOnlyStrategyHandler {
-    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
+impl<'a> StrategyHandler for KeepFirstStrategyHandler<'a> {
+    fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
         let eq = match &self.last_record {
-            Some(lr) => lr.get(self.key_index).unwrap() == row.get(self.key_index).unwrap(),
+            Some((lr, lr_side)) =>
+                lr
+                    .get(
+                        if lr_side.eq(&Side::Left) {
+                            self.left_key_index
+                        } else {
+                            self.right_key_index
+                        }
+                    )
+                    .unwrap() ==
+                    row
+                        .get(
+                            if side.eq(&Side::Left) {
+                                self.left_key_index
+                            } else {
+                                self.right_key_index
+                            }
+                        )
+                        .unwrap(),
             None => false,
         };
 
         if self.duplicates_counter == 0 {
             match &self.last_record {
-                Some(lr) => self.writer.write_byte_record(lr)?,
+                Some((lr, _side)) => self.writer.write_byte_record(lr)?,
                 None => (),
             }
         }
@@ -71,49 +164,46 @@ impl StrategyHandler for FirstOnlyStrategyHandler {
             false => 0,
         };
 
-        self.last_record = Some(row.clone());
+        self.last_record = Some((row, side));
 
         Ok(())
     }
 
     fn flush(&mut self) -> Result<(), csv::Error> {
         if self.duplicates_counter == 0 {
-            if let Some(lr) = &self.last_record {
+            if let Some((lr, _side)) = &self.last_record {
                 self.writer.write_byte_record(lr)?;
             }
         }
         Ok(())
     }
 }
-pub struct ReduceStrategyHandler {
-    writer: Writer<File>,
-    key_index: usize,
-    group: Option<Vec<ByteRecord>>,
+pub struct ReduceStrategyHandler<'a> {
+    writer: &'a mut Writer<File>,
+    left_key_index: usize,
+    right_key_index: usize,
+    group: Option<Vec<(ByteRecord, Side)>>,
 }
 
-impl ReduceStrategyHandler {
-    pub fn build(writer: Writer<File>, key_index: usize) -> Self {
+impl<'a> ReduceStrategyHandler<'a> {
+    pub fn build(
+        writer: &'a mut Writer<File>,
+        left_key_index: usize,
+        right_key_index: usize
+    ) -> Self {
         ReduceStrategyHandler {
             writer,
-            key_index,
+            left_key_index,
+            right_key_index,
             group: None,
         }
     }
 
     fn flush_group(&mut self) -> Result<(), csv::Error> {
         if let Some(group) = self.group.take() {
-            let mut reduced: Vec<&[u8]> = group[0].into_iter().collect();
-            for record in group.iter().skip(1) {
-                let key = record.get(self.key_index).unwrap();
-                let reduced_key = *reduced.get(self.key_index).unwrap();
-                if key != reduced_key {
-                    panic!("Invalid data: keys in group do not match");
-                }
+            let mut reduced: Vec<&[u8]> = group[0].0.into_iter().collect();
+            for (record, _record_side) in group.iter().skip(1) {
                 for (i, field) in record.iter().enumerate() {
-                    if i == self.key_index {
-                        continue;
-                    }
-
                     if !field.is_empty() {
                         reduced[i] = field;
                     }
@@ -126,18 +216,29 @@ impl ReduceStrategyHandler {
     }
 }
 
-impl StrategyHandler for ReduceStrategyHandler {
-    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
-        let key = row.get(self.key_index).unwrap();
+impl<'a> StrategyHandler for ReduceStrategyHandler<'a> {
+    fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
+        let key = row
+            .get(if side.eq(&Side::Left) { self.left_key_index } else { self.right_key_index })
+            .unwrap();
         if let Some(group) = &mut self.group {
-            let group_key = group[0].get(self.key_index).unwrap();
+            let (record, record_size) = &group[0];
+            let group_key = record
+                .get(
+                    if record_size.eq(&Side::Left) {
+                        self.left_key_index
+                    } else {
+                        self.right_key_index
+                    }
+                )
+                .unwrap();
             if key == group_key {
-                group.push(row);
+                group.push((row, side));
                 return Ok(());
             }
             self.flush_group()?;
         }
-        self.group = Some(vec![row]);
+        self.group = Some(vec![(row, side)]);
         Ok(())
     }
 
@@ -146,20 +247,26 @@ impl StrategyHandler for ReduceStrategyHandler {
     }
 }
 
-pub struct CrossJoinStrategyHandler {
-    writer: Writer<File>,
-    last_row: Option<ByteRecord>,
+pub struct CrossJoinStrategyHandler<'a> {
+    writer: &'a mut Writer<File>,
+    last_row: Option<(ByteRecord, Side)>,
     duplicates: Vec<(ByteRecord, Side)>,
-    key_index: usize,
+    left_key_index: usize,
+    right_key_index: usize,
 }
 
-impl CrossJoinStrategyHandler {
-    pub fn build(writer: Writer<File>, key_index: usize) -> Self {
+impl<'a> CrossJoinStrategyHandler<'a> {
+    pub fn build(
+        writer: &'a mut Writer<File>,
+        left_key_index: usize,
+        right_key_index: usize
+    ) -> Self {
         CrossJoinStrategyHandler {
             writer,
             last_row: None,
             duplicates: vec![],
-            key_index,
+            left_key_index,
+            right_key_index,
         }
     }
 
@@ -203,23 +310,41 @@ impl CrossJoinStrategyHandler {
     }
 }
 
-impl StrategyHandler for CrossJoinStrategyHandler {
+impl<'a> StrategyHandler for CrossJoinStrategyHandler<'a> {
     fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
         let is_equal;
-        if let Some(last_row) = &self.last_row {
-            is_equal = last_row.get(self.key_index).unwrap() == row.get(self.key_index).unwrap();
+        if let Some((last_row, last_row_side)) = &self.last_row {
+            is_equal =
+                last_row
+                    .get(
+                        if last_row_side.eq(&Side::Left) {
+                            self.left_key_index
+                        } else {
+                            self.right_key_index
+                        }
+                    )
+                    .unwrap() ==
+                row
+                    .get(
+                        if side.eq(&Side::Left) {
+                            self.left_key_index
+                        } else {
+                            self.right_key_index
+                        }
+                    )
+                    .unwrap();
             if !is_equal && self.duplicates.len() > 0 {
                 self.flush_duplicates()?;
             }
             if (is_equal && self.duplicates.len() > 0) || (!is_equal && self.duplicates.len() == 0) {
-                self.duplicates.push((row.clone(), side));
+                self.duplicates.push((row.clone(), side.clone()));
             } else {
                 self.flush_duplicates()?;
             }
         } else {
-            self.duplicates.push((row.clone(), side));
+            self.duplicates.push((row.clone(), side.clone()));
         }
-        self.last_row = Some(row);
+        self.last_row = Some((row, side));
         Ok(())
     }
 
@@ -229,20 +354,26 @@ impl StrategyHandler for CrossJoinStrategyHandler {
     }
 }
 
-pub struct RemoveSimilarStrategyHandler {
-    writer: Writer<File>,
-    last_row: Option<ByteRecord>,
+pub struct RemoveSimilarStrategyHandler<'a> {
+    writer: &'a mut Writer<File>,
+    last_row: Option<(ByteRecord, Side)>,
     duplicates: Vec<ByteRecord>,
-    key_index: usize,
+    left_key_index: usize,
+    right_key_index: usize,
 }
 
-impl RemoveSimilarStrategyHandler {
-    pub fn build(writer: Writer<File>, key_index: usize) -> Self {
+impl<'a> RemoveSimilarStrategyHandler<'a> {
+    pub fn build(
+        writer: &'a mut Writer<File>,
+        left_key_index: usize,
+        right_key_index: usize
+    ) -> Self {
         RemoveSimilarStrategyHandler {
             writer,
             last_row: None,
             duplicates: vec![],
-            key_index,
+            left_key_index,
+            right_key_index,
         }
     }
 
@@ -258,11 +389,29 @@ impl RemoveSimilarStrategyHandler {
     }
 }
 
-impl StrategyHandler for RemoveSimilarStrategyHandler {
-    fn add_row(&mut self, row: ByteRecord, _side: Side) -> Result<(), csv::Error> {
+impl<'a> StrategyHandler for RemoveSimilarStrategyHandler<'a> {
+    fn add_row(&mut self, row: ByteRecord, side: Side) -> Result<(), csv::Error> {
         let is_equal;
-        if let Some(last_row) = &self.last_row {
-            is_equal = last_row.get(self.key_index).unwrap() == row.get(self.key_index).unwrap();
+        if let Some((last_row, last_row_side)) = &self.last_row {
+            is_equal =
+                last_row
+                    .get(
+                        if last_row_side.eq(&Side::Left) {
+                            self.left_key_index
+                        } else {
+                            self.right_key_index
+                        }
+                    )
+                    .unwrap() ==
+                row
+                    .get(
+                        if side.eq(&Side::Left) {
+                            self.left_key_index
+                        } else {
+                            self.right_key_index
+                        }
+                    )
+                    .unwrap();
             if !is_equal && self.duplicates.len() > 0 {
                 self.flush_duplicates()?;
             }
@@ -274,7 +423,7 @@ impl StrategyHandler for RemoveSimilarStrategyHandler {
         } else {
             self.duplicates.push(row.clone());
         }
-        self.last_row = Some(row);
+        self.last_row = Some((row, side));
         Ok(())
     }
 

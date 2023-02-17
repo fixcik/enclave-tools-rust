@@ -100,6 +100,7 @@ impl<'a> StrategyHandler for KeepAllStrategyHandler<'a> {
         self.writer.write_record(&row)
     }
     fn flush(&mut self) -> Result<(), csv::Error> {
+        self.writer.flush()?;
         Ok(())
     }
 }
@@ -176,6 +177,7 @@ impl<'a> StrategyHandler for KeepFirstStrategyHandler<'a> {
                 self.writer.write_byte_record(lr)?;
             }
         }
+        self.writer.flush()?;
         Ok(())
     }
 }
@@ -244,7 +246,9 @@ impl<'a> StrategyHandler for ReduceStrategyHandler<'a> {
     }
 
     fn flush(&mut self) -> Result<(), csv::Error> {
-        self.flush_group()
+        self.flush_group()?;
+        self.writer.flush()?;
+        Ok(())
     }
 }
 
@@ -359,6 +363,7 @@ impl<'a> StrategyHandler for CrossJoinStrategyHandler<'a> {
 
     fn flush(&mut self) -> Result<(), csv::Error> {
         self.flush_duplicates()?;
+        self.writer.flush()?;
         Ok(())
     }
 }
@@ -439,6 +444,7 @@ impl<'a> StrategyHandler for RemoveSimilarStrategyHandler<'a> {
 
     fn flush(&mut self) -> Result<(), csv::Error> {
         self.flush_duplicates()?;
+        self.writer.flush()?;
         Ok(())
     }
 }

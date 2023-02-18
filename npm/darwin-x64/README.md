@@ -1,3 +1,3 @@
-# `enclave-tools-rust-darwin-x64`
+# `@aggregion/enclave-tools-rust-darwin-x64`
 
-This is the **x86_64-apple-darwin** binary for `enclave-tools-rust`
+This is the **x86_64-apple-darwin** binary for `@aggregion/enclave-tools-rust`

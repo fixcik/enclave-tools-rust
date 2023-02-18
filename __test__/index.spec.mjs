@@ -11,6 +11,31 @@ async function getTempFilePath() {
   return path.join(tempDir, tempFileName);
 }
 
+test.only(`merge: test output header callback`, async (t) => {
+  const output = await getTempFilePath();
+  await t.notThrowsAsync(
+    merge(
+      "./__test__/fixtures/list1-sorted.csv",
+      "./__test__/fixtures/list2-sorted.csv",
+      {
+        mergeStrategy: MergeStrategy.And,
+        deduplicateStrategy: DeduplicateStrategy.Reduce,
+        leftKey: "key",
+        rightKey: "key",
+        isNumberKey: true,
+        output,
+        outputHeaderCallback: (header) =>
+          header.includes("_left")
+            ? undefined
+            : header === "myfeature_right"
+            ? "myfeature"
+            : header,
+      }
+    )
+  );
+  t.snapshot(await fs.readFile(output, { encoding: "ascii" }));
+});
+
 for (let mergeStrategy in MergeStrategy) {
   for (let deduplicateStrategy in DeduplicateStrategy) {
     test(`merge: ${mergeStrategy} - ${deduplicateStrategy}`, async (t) => {

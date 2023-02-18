@@ -4,7 +4,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "enclave-tools-rust",
+    "name": "aggregion_enclave-tools-rust",
     "triples": {
       "defaults": false,
       "additional": [

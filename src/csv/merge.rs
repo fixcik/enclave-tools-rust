@@ -4,6 +4,9 @@ use std::fs::File;
 use std::vec;
 
 use csv::{ ByteRecord, ByteRecordsIntoIter, Reader, ReaderBuilder, Writer, WriterBuilder };
+use napi::threadsafe_function::{ ThreadsafeFunction, ErrorStrategy };
+
+use futures::executor;
 
 use crate::{ MergeStrategy, DeduplicateStrategy };
 
@@ -18,6 +21,7 @@ pub struct Merger {
     right_key: String,
     number_key: bool,
     output: String,
+    output_header_callback: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>,
 }
 
 fn to_number(x: &[u8]) -> i64 {
@@ -35,7 +39,8 @@ impl Merger {
         left_key: String,
         right_key: String,
         number_key: bool,
-        output: String
+        output: String,
+        output_header_callback: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>
     ) -> Merger {
         Merger {
             left_file_path,
@@ -46,6 +51,7 @@ impl Merger {
             right_key,
             output,
             number_key,
+            output_header_callback,
         }
     }
 
@@ -68,11 +74,11 @@ impl Merger {
         );
 
         let left_key_index = self
-            .get_header_pos(&output_headers, &self.left_key)
+            .get_formatted_header_position(&output_headers, &self.left_key)
             .expect(format!("Has column {} in left file", self.left_key).as_str());
 
         let right_key_index = self
-            .get_header_pos(&output_headers, &self.right_key)
+            .get_formatted_header_position(&output_headers, &self.right_key)
             .expect(format!("Has column {} in right file", self.right_key).as_str());
 
         let mut writer = self.get_writer();
@@ -206,28 +212,43 @@ impl Merger {
         ReaderBuilder::new().delimiter(b'\t').from_path(path)
     }
 
-    fn get_headers(&self, reader: &mut Reader<File>) -> Result<Vec<String>, csv::Error> {
-        let record: Vec<String> = reader
+    fn get_headers(&self, reader: &mut Reader<File>) -> Result<Vec<Option<String>>, csv::Error> {
+        let record: Vec<Option<String>> = reader
             .headers()?
             .iter()
-            .map(|s| s.to_string())
+            .map(|s| self.format_header(s.to_string()))
             .collect();
         Ok(record)
     }
 
+    fn format_header(&self, header: String) -> Option<String> {
+        match self.output_header_callback.clone() {
+            Some(cb) => {
+                let res = cb.call_async::<Option<String>>(header);
+                let res = executor::block_on(res);
+                res.unwrap()
+            }
+            None => Some(header),
+        }
+    }
+
     fn get_output_headers<'a>(
         &self,
-        left_headers: &'a Vec<String>,
-        right_headers: &'a Vec<String>
+        left_headers: &'a Vec<Option<String>>,
+        right_headers: &'a Vec<Option<String>>
     ) -> Vec<String> {
         let mut result: Vec<String> = vec![];
 
         for header in left_headers {
-            result.push(header.to_owned());
+            if let Some(header) = header {
+                result.push(header.to_string());
+            }
         }
 
         for header in right_headers {
-            result.push(header.to_owned());
+            if let Some(header) = header {
+                result.push(header.to_string());
+            }
         }
 
         let mut set = HashSet::new();
@@ -240,7 +261,7 @@ impl Merger {
     fn map_file_headers_to_output(
         &self,
         output_headers: &Vec<String>,
-        file_headers: &Vec<String>
+        file_headers: &Vec<Option<String>>
     ) -> HashMap<usize, Option<usize>> {
         output_headers
             .iter()
@@ -249,8 +270,12 @@ impl Merger {
             .collect()
     }
 
-    fn get_header_pos(&self, headers: &Vec<String>, name: &String) -> Option<usize> {
-        headers.iter().position(|col| col == name)
+    fn get_header_pos(&self, headers: &Vec<Option<String>>, name: &String) -> Option<usize> {
+        headers.iter().position(|col| col.is_some() && &col.as_ref().unwrap() == &name)
+    }
+
+    fn get_formatted_header_position(&self, headers: &Vec<String>, name: &String) -> Option<usize> {
+        headers.iter().position(|col| col == &self.format_header(name.to_string()).unwrap())
     }
 
     fn read_record(

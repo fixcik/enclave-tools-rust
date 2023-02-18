@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 
-use crate::csv::AsyncMergeTask;
+use crate::csv::merge::AsyncMergeTask;
 use napi::{
     bindgen_prelude::*,
     threadsafe_function::{ ThreadSafeCallContext, ThreadsafeFunction, ErrorStrategy },

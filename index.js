@@ -246,8 +246,12 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { MergeStrategy, DeduplicateStrategy, merge } = nativeBinding
+const { FieldType, Comparison, Filter, Transform, MergeStrategy, DeduplicateStrategy, merge } = nativeBinding
 
+module.exports.FieldType = FieldType
+module.exports.Comparison = Comparison
+module.exports.Filter = Filter
+module.exports.Transform = Transform
 module.exports.MergeStrategy = MergeStrategy
 module.exports.DeduplicateStrategy = DeduplicateStrategy
 module.exports.merge = merge

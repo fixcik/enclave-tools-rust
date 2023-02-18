@@ -11,7 +11,7 @@ async function getTempFilePath() {
   return path.join(tempDir, tempFileName);
 }
 
-test.only(`merge: test output header callback`, async (t) => {
+test(`merge: test output header callback`, async (t) => {
   const output = await getTempFilePath();
   await t.notThrowsAsync(
     merge(

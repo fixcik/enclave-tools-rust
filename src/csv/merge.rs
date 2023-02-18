@@ -59,8 +59,12 @@ impl Merger {
         let mut left_reader = self.get_left_reader()?;
         let mut right_reader = self.get_right_reader()?;
 
-        let left_headers = self.get_headers(&mut left_reader)?;
-        let right_headers = self.get_headers(&mut right_reader)?;
+        let (left_headers, left_key_index) = self.get_headers(&mut left_reader, &self.left_key)?;
+        let (right_headers, right_key_index) = self.get_headers(
+            &mut right_reader,
+            &self.right_key
+        )?;
+
         let output_headers = self.get_output_headers(&left_headers, &right_headers);
 
         let map_left_headers_to_union = self.map_file_headers_to_output(
@@ -73,13 +77,13 @@ impl Merger {
             &right_headers
         );
 
-        let left_key_index = self
-            .get_formatted_header_position(&output_headers, &self.left_key)
-            .expect(format!("Has column {} in left file", self.left_key).as_str());
+        let left_key_index = left_key_index.expect(
+            format!("Has column {} in left file", self.left_key).as_str()
+        );
 
-        let right_key_index = self
-            .get_formatted_header_position(&output_headers, &self.right_key)
-            .expect(format!("Has column {} in right file", self.right_key).as_str());
+        let right_key_index = right_key_index.expect(
+            format!("Has column {} in right file", self.right_key).as_str()
+        );
 
         let mut writer = self.get_writer();
 
@@ -212,13 +216,24 @@ impl Merger {
         ReaderBuilder::new().delimiter(b'\t').from_path(path)
     }
 
-    fn get_headers(&self, reader: &mut Reader<File>) -> Result<Vec<Option<String>>, csv::Error> {
+    fn get_headers(
+        &self,
+        reader: &mut Reader<File>,
+        key: &String
+    ) -> Result<(Vec<Option<String>>, Option<usize>), csv::Error> {
+        let mut key_index = None;
         let record: Vec<Option<String>> = reader
             .headers()?
             .iter()
-            .map(|s| self.format_header(s.to_string()))
+            .enumerate()
+            .map(|(index, s)| {
+                if s.to_string() == *key {
+                    key_index = Some(index);
+                }
+                self.format_header(s.to_string())
+            })
             .collect();
-        Ok(record)
+        Ok((record, key_index))
     }
 
     fn format_header(&self, header: String) -> Option<String> {
@@ -272,12 +287,6 @@ impl Merger {
 
     fn get_header_pos(&self, headers: &Vec<Option<String>>, name: &String) -> Option<usize> {
         headers.iter().position(|col| &col.as_ref().unwrap_or(&"".to_string()) == &name)
-    }
-
-    fn get_formatted_header_position(&self, headers: &Vec<String>, name: &String) -> Option<usize> {
-        headers
-            .iter()
-            .position(|col| col == &self.format_header(name.to_string()).unwrap_or("".to_string()))
     }
 
     fn read_record(

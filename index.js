@@ -26,10 +26,10 @@ switch (platform) {
   case 'android':
     switch (arch) {
       case 'arm64':
-        localFileExisted = existsSync(join(__dirname, 'aggregion_enclave-tools-rust.android-arm64.node'))
+        localFileExisted = existsSync(join(__dirname, 'enclave-tools-rust.android-arm64.node'))
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.android-arm64.node')
+            nativeBinding = require('./enclave-tools-rust.android-arm64.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-android-arm64')
           }
@@ -38,10 +38,10 @@ switch (platform) {
         }
         break
       case 'arm':
-        localFileExisted = existsSync(join(__dirname, 'aggregion_enclave-tools-rust.android-arm-eabi.node'))
+        localFileExisted = existsSync(join(__dirname, 'enclave-tools-rust.android-arm-eabi.node'))
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.android-arm-eabi.node')
+            nativeBinding = require('./enclave-tools-rust.android-arm-eabi.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-android-arm-eabi')
           }
@@ -57,11 +57,11 @@ switch (platform) {
     switch (arch) {
       case 'x64':
         localFileExisted = existsSync(
-          join(__dirname, 'aggregion_enclave-tools-rust.win32-x64-msvc.node')
+          join(__dirname, 'enclave-tools-rust.win32-x64-msvc.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.win32-x64-msvc.node')
+            nativeBinding = require('./enclave-tools-rust.win32-x64-msvc.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-win32-x64-msvc')
           }
@@ -71,11 +71,11 @@ switch (platform) {
         break
       case 'ia32':
         localFileExisted = existsSync(
-          join(__dirname, 'aggregion_enclave-tools-rust.win32-ia32-msvc.node')
+          join(__dirname, 'enclave-tools-rust.win32-ia32-msvc.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.win32-ia32-msvc.node')
+            nativeBinding = require('./enclave-tools-rust.win32-ia32-msvc.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-win32-ia32-msvc')
           }
@@ -85,11 +85,11 @@ switch (platform) {
         break
       case 'arm64':
         localFileExisted = existsSync(
-          join(__dirname, 'aggregion_enclave-tools-rust.win32-arm64-msvc.node')
+          join(__dirname, 'enclave-tools-rust.win32-arm64-msvc.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.win32-arm64-msvc.node')
+            nativeBinding = require('./enclave-tools-rust.win32-arm64-msvc.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-win32-arm64-msvc')
           }
@@ -102,10 +102,10 @@ switch (platform) {
     }
     break
   case 'darwin':
-    localFileExisted = existsSync(join(__dirname, 'aggregion_enclave-tools-rust.darwin-universal.node'))
+    localFileExisted = existsSync(join(__dirname, 'enclave-tools-rust.darwin-universal.node'))
     try {
       if (localFileExisted) {
-        nativeBinding = require('./aggregion_enclave-tools-rust.darwin-universal.node')
+        nativeBinding = require('./enclave-tools-rust.darwin-universal.node')
       } else {
         nativeBinding = require('@aggregion/enclave-tools-rust-darwin-universal')
       }
@@ -113,10 +113,10 @@ switch (platform) {
     } catch {}
     switch (arch) {
       case 'x64':
-        localFileExisted = existsSync(join(__dirname, 'aggregion_enclave-tools-rust.darwin-x64.node'))
+        localFileExisted = existsSync(join(__dirname, 'enclave-tools-rust.darwin-x64.node'))
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.darwin-x64.node')
+            nativeBinding = require('./enclave-tools-rust.darwin-x64.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-darwin-x64')
           }
@@ -126,11 +126,11 @@ switch (platform) {
         break
       case 'arm64':
         localFileExisted = existsSync(
-          join(__dirname, 'aggregion_enclave-tools-rust.darwin-arm64.node')
+          join(__dirname, 'enclave-tools-rust.darwin-arm64.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.darwin-arm64.node')
+            nativeBinding = require('./enclave-tools-rust.darwin-arm64.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-darwin-arm64')
           }
@@ -146,10 +146,10 @@ switch (platform) {
     if (arch !== 'x64') {
       throw new Error(`Unsupported architecture on FreeBSD: ${arch}`)
     }
-    localFileExisted = existsSync(join(__dirname, 'aggregion_enclave-tools-rust.freebsd-x64.node'))
+    localFileExisted = existsSync(join(__dirname, 'enclave-tools-rust.freebsd-x64.node'))
     try {
       if (localFileExisted) {
-        nativeBinding = require('./aggregion_enclave-tools-rust.freebsd-x64.node')
+        nativeBinding = require('./enclave-tools-rust.freebsd-x64.node')
       } else {
         nativeBinding = require('@aggregion/enclave-tools-rust-freebsd-x64')
       }
@@ -162,11 +162,11 @@ switch (platform) {
       case 'x64':
         if (isMusl()) {
           localFileExisted = existsSync(
-            join(__dirname, 'aggregion_enclave-tools-rust.linux-x64-musl.node')
+            join(__dirname, 'enclave-tools-rust.linux-x64-musl.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./aggregion_enclave-tools-rust.linux-x64-musl.node')
+              nativeBinding = require('./enclave-tools-rust.linux-x64-musl.node')
             } else {
               nativeBinding = require('@aggregion/enclave-tools-rust-linux-x64-musl')
             }
@@ -175,11 +175,11 @@ switch (platform) {
           }
         } else {
           localFileExisted = existsSync(
-            join(__dirname, 'aggregion_enclave-tools-rust.linux-x64-gnu.node')
+            join(__dirname, 'enclave-tools-rust.linux-x64-gnu.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./aggregion_enclave-tools-rust.linux-x64-gnu.node')
+              nativeBinding = require('./enclave-tools-rust.linux-x64-gnu.node')
             } else {
               nativeBinding = require('@aggregion/enclave-tools-rust-linux-x64-gnu')
             }
@@ -191,11 +191,11 @@ switch (platform) {
       case 'arm64':
         if (isMusl()) {
           localFileExisted = existsSync(
-            join(__dirname, 'aggregion_enclave-tools-rust.linux-arm64-musl.node')
+            join(__dirname, 'enclave-tools-rust.linux-arm64-musl.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./aggregion_enclave-tools-rust.linux-arm64-musl.node')
+              nativeBinding = require('./enclave-tools-rust.linux-arm64-musl.node')
             } else {
               nativeBinding = require('@aggregion/enclave-tools-rust-linux-arm64-musl')
             }
@@ -204,11 +204,11 @@ switch (platform) {
           }
         } else {
           localFileExisted = existsSync(
-            join(__dirname, 'aggregion_enclave-tools-rust.linux-arm64-gnu.node')
+            join(__dirname, 'enclave-tools-rust.linux-arm64-gnu.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./aggregion_enclave-tools-rust.linux-arm64-gnu.node')
+              nativeBinding = require('./enclave-tools-rust.linux-arm64-gnu.node')
             } else {
               nativeBinding = require('@aggregion/enclave-tools-rust-linux-arm64-gnu')
             }
@@ -219,11 +219,11 @@ switch (platform) {
         break
       case 'arm':
         localFileExisted = existsSync(
-          join(__dirname, 'aggregion_enclave-tools-rust.linux-arm-gnueabihf.node')
+          join(__dirname, 'enclave-tools-rust.linux-arm-gnueabihf.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./aggregion_enclave-tools-rust.linux-arm-gnueabihf.node')
+            nativeBinding = require('./enclave-tools-rust.linux-arm-gnueabihf.node')
           } else {
             nativeBinding = require('@aggregion/enclave-tools-rust-linux-arm-gnueabihf')
           }

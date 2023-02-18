@@ -23,6 +23,6 @@ export interface MergeOptions {
   leftKey: string
   rightKey: string
   isNumberKey?: boolean
-  outputHeaderCallback?: (fileIndex: number, columnName: string) => string | undefined
+  outputHeaderCallback?: (columnName: string) => string | undefined
 }
 export function merge(leftPath: string, rightPath: string, options: MergeOptions): Promise<void>

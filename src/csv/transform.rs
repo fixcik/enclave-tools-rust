@@ -143,15 +143,12 @@ impl Transform {
     }
 
     pub fn save_to(&mut self, output: String) -> Result<(), Box<dyn Error>> {
-        println!("save to: {:?}", output);
         let mut reader = ReaderBuilder::new().delimiter(self.delimiter).from_path(&self.path)?;
         let orig_headers = reader
             .headers()?
             .iter()
             .map(|x| x.to_owned())
             .collect::<Vec<String>>();
-
-        println!("save to: {:?}", orig_headers);
 
         let mut headers: Vec<(usize, Option<String>)> = orig_headers
             .iter()

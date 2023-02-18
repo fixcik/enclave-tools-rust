@@ -39,7 +39,7 @@ pub struct MergeOptions {
     pub right_key: String,
     pub is_number_key: Option<bool>,
 
-    #[napi(ts_type = "(fileIndex: number, columnName: string) => string | undefined")]
+    #[napi(ts_type = "(columnName: string) => string | undefined")]
     pub output_header_callback: Option<JsFunction>,
 }
 

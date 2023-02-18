@@ -271,11 +271,13 @@ impl Merger {
     }
 
     fn get_header_pos(&self, headers: &Vec<Option<String>>, name: &String) -> Option<usize> {
-        headers.iter().position(|col| col.is_some() && &col.as_ref().unwrap() == &name)
+        headers.iter().position(|col| &col.as_ref().unwrap_or(&"".to_string()) == &name)
     }
 
     fn get_formatted_header_position(&self, headers: &Vec<String>, name: &String) -> Option<usize> {
-        headers.iter().position(|col| col == &self.format_header(name.to_string()).unwrap())
+        headers
+            .iter()
+            .position(|col| col == &self.format_header(name.to_string()).unwrap_or("".to_string()))
     }
 
     fn read_record(

@@ -11,7 +11,7 @@ async function getTempFilePath() {
   return path.join(tempDir, tempFileName);
 }
 
-test(`merge: test output header callback`, async (t) => {
+test(`test output header callback`, async (t) => {
   const output = await getTempFilePath();
   await t.notThrowsAsync(
     merge(
@@ -38,7 +38,7 @@ test(`merge: test output header callback`, async (t) => {
 
 for (let mergeStrategy in MergeStrategy) {
   for (let deduplicateStrategy in DeduplicateStrategy) {
-    test(`merge: ${mergeStrategy} - ${deduplicateStrategy}`, async (t) => {
+    test(`test strategy: ${mergeStrategy} - ${deduplicateStrategy}`, async (t) => {
       const output = await getTempFilePath();
       await t.notThrowsAsync(
         merge(

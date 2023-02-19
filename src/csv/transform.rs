@@ -166,7 +166,6 @@ impl Transform {
                 .collect();
         }
 
-        println!("open file: {}", output);
         let mut writer = WriterBuilder::new().delimiter(self.delimiter).from_path(output)?;
 
         let write_headers: Vec<String> = headers
@@ -175,7 +174,6 @@ impl Transform {
             .map(|x| x.clone().1.unwrap().to_string())
             .collect();
 
-        println!("headers: {:?}", &write_headers);
         writer.write_record(write_headers)?;
 
         for res in reader.byte_records() {
@@ -305,8 +303,6 @@ impl JsTransform {
 
     #[napi(ts_return_type = "Promise<void>")]
     pub fn save_csv(&'static mut self, env: Env, path: String) -> Result<JsObject, napi::Error> {
-        // println!("{:?}", env.);
-
         let res = env.execute_tokio_future(
             async move {
                 self.inner.save_to(path).unwrap();

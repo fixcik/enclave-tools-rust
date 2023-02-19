@@ -101,8 +101,16 @@ impl Merger {
         let mut left_lines = left_reader.into_byte_records();
         let mut right_lines = right_reader.into_byte_records();
 
-        let mut left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
-        let mut right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
+        let mut left_line = self.read_record(
+            &mut left_lines,
+            &map_left_headers_to_union,
+            Some(left_key_index)
+        );
+        let mut right_line = self.read_record(
+            &mut right_lines,
+            &map_right_headers_to_union,
+            Some(right_key_index)
+        );
 
         let mut old_left_value: Option<Vec<u8>> = None;
 
@@ -114,13 +122,13 @@ impl Merger {
         let mut old_left_eq_right;
         let mut need_read_left;
 
-        let mut left_value;
-        let mut right_value;
-
         let mut counter = 0;
-        while let (Some(left_record), Some(right_record)) = (&left_line, &right_line) {
-            left_value = left_record.get(left_key_index).unwrap();
-            right_value = right_record.get(right_key_index).unwrap();
+        while
+            let (Some((left_record, Some(left_value))), Some((right_record, Some(right_value)))) = (
+                &left_line,
+                &right_line,
+            )
+        {
             counter += 1;
 
             if counter % 100000 == 0 {
@@ -159,16 +167,24 @@ impl Merger {
 
             if cmp.is_le() && !need_read_left {
                 left_readed = true;
-                old_left_value = Some(left_value.to_owned());
-                left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
+                old_left_value = Some(left_value.to_vec());
+                left_line = self.read_record(
+                    &mut left_lines,
+                    &map_left_headers_to_union,
+                    Some(left_key_index)
+                );
             } else {
                 right_readed = true;
-                right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
+                right_line = self.read_record(
+                    &mut right_lines,
+                    &map_right_headers_to_union,
+                    Some(right_key_index)
+                );
             }
         }
 
         if self.merge_strategy != MergeStrategy::And {
-            while let Some(left_record) = &left_line {
+            while let Some((left_record, _)) = &left_line {
                 if left_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or | MergeStrategy::AndNot => {
@@ -178,13 +194,13 @@ impl Merger {
                     }
                 }
 
-                left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
+                left_line = self.read_record(&mut left_lines, &map_left_headers_to_union, None);
                 left_readed = true;
             }
         }
 
         if self.merge_strategy != MergeStrategy::And {
-            while let Some(right_record) = &right_line {
+            while let Some((right_record, _)) = &right_line {
                 if right_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or => {
@@ -194,7 +210,7 @@ impl Merger {
                     }
                 }
 
-                right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
+                right_line = self.read_record(&mut right_lines, &map_right_headers_to_union, None);
                 right_readed = true;
             }
         }
@@ -294,8 +310,9 @@ impl Merger {
     fn read_record(
         &self,
         iter: &mut ByteRecordsIntoIter<File>,
-        mapping: &HashMap<usize, Option<usize>>
-    ) -> Option<ByteRecord> {
+        mapping: &HashMap<usize, Option<usize>>,
+        key_index: Option<usize>
+    ) -> Option<(ByteRecord, Option<Vec<u8>>)> {
         if let Some(Ok(record)) = iter.next() {
             let mut values: Vec<&[u8]> = Vec::with_capacity(mapping.len());
             for i in 0..mapping.len() {
@@ -306,7 +323,12 @@ impl Merger {
                     values.push(b"");
                 }
             }
-            return Some(ByteRecord::from_iter(&values));
+            let new_record = ByteRecord::from_iter(&values);
+            if let Some(key_index) = key_index {
+                let key_value = record.get(key_index).unwrap().to_owned();
+                return Some((new_record, Some(key_value.clone())));
+            }
+            return Some((new_record, None));
         }
         None
     }

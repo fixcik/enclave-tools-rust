@@ -24,6 +24,8 @@ test("Test transform", async (t) => {
     new Filter("feature2_left", "1", FieldType.Number, Comparison.Eq)
   );
 
+  transform.appendLineNumber();
+
   await transform.saveCsv(output);
 
   t.snapshot(await fs.readFile(output, { encoding: "ascii" }));

@@ -110,6 +110,7 @@ impl JsFilter {
 pub struct Transform {
     path: String,
     delimiter: u8,
+    append_line_number: bool,
     filters: Vec<Filter>,
     columns_transform: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>,
 }
@@ -121,6 +122,7 @@ impl Transform {
     ) -> Self {
         Self {
             path,
+            append_line_number: false,
             delimiter: b'\t',
             filters: vec![],
             columns_transform: None,
@@ -129,6 +131,10 @@ impl Transform {
 
     pub fn with_delimiter(&mut self, delimiter: u8) {
         self.delimiter = delimiter;
+    }
+
+    pub fn append_line_number(&mut self) {
+        self.append_line_number = true;
     }
 
     pub fn set_columns_transform(
@@ -168,31 +174,45 @@ impl Transform {
 
         let mut writer = WriterBuilder::new().delimiter(self.delimiter).from_path(output)?;
 
-        let write_headers: Vec<String> = headers
+        let mut write_headers: Vec<String> = headers
             .iter()
             .filter(|x| x.1.is_some())
             .map(|x| x.clone().1.unwrap().to_string())
             .collect();
 
+        if self.append_line_number {
+            write_headers.push("__line_number".to_string());
+        }
+
         writer.write_record(write_headers)?;
 
+        let mut line = 1;
         for res in reader.byte_records() {
             let mut record = res?;
             if self.test_record(&record) {
+                let line_value = line.to_string();
                 if self.columns_transform.is_some() && headers.iter().any(|(_, h)| h.is_none()) {
-                    record = ByteRecord::from_iter(
-                        record
-                            .into_iter()
-                            .enumerate()
-                            .filter(|(index, _)| {
-                                let r = headers.iter().find(|(i, _)| index == i);
-                                r.is_some() && r.unwrap().1.is_some()
-                            })
-                            .map(|(_, head)| head)
-                    );
+                    let mut rec_vec: Vec<&[u8]> = record
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(index, _)| {
+                            let r = headers.iter().find(|(i, _)| index == i);
+                            r.is_some() && r.unwrap().1.is_some()
+                        })
+                        .map(|(_, head)| head)
+                        .collect();
+                    if self.append_line_number {
+                        rec_vec.push(line_value.as_bytes());
+                    }
+                    record = ByteRecord::from_iter(rec_vec);
+                } else if self.append_line_number {
+                    let mut rec_vec: Vec<&[u8]> = record.iter().collect();
+                    rec_vec.push(line_value.as_bytes());
+                    record = ByteRecord::from_iter(rec_vec);
                 }
                 writer.write_byte_record(&record)?;
             }
+            line += 1;
         }
 
         writer.flush()?;
@@ -282,12 +302,17 @@ impl JsTransform {
     }
     #[napi]
     pub fn with_delimiter(&mut self, delimiter: u8) {
-        self.inner.with_delimiter(delimiter)
+        self.inner.with_delimiter(delimiter);
+    }
+
+    #[napi]
+    pub fn append_line_number(&mut self) {
+        self.inner.append_line_number();
     }
 
     #[napi]
     pub fn add_filter(&mut self, filter: &JsFilter) {
-        self.inner.add_filter(&filter.inner)
+        self.inner.add_filter(&filter.inner);
     }
 
     #[napi]
@@ -314,37 +339,6 @@ impl JsTransform {
         res
     }
 }
-
-// pub struct AsyncTransformTask {
-//     path: String,
-//     output: String,
-//     delimiter: u8,
-//     filters: Vec<Filter>,
-//     columns_transform: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>,
-// }
-
-// impl Task for AsyncTransformTask {
-//     type Output = Undefined;
-//     type JsValue = ();
-
-//     fn compute(&mut self) -> napi::Result<()> {
-//         let mut transform = Transform::new(
-//             self.path.to_owned(),
-//             self.delimiter,
-//             self.filters,
-//             None
-//         );
-
-//         transform
-//             .save_to(self.output.to_owned())
-//             .map_err(|err| napi::Error::new(napi::Status::GenericFailure, err.to_string()))?;
-//         Ok(())
-//     }
-
-//     fn resolve(&mut self, _env: napi::Env, _output: ()) -> napi::Result<Undefined> {
-//         Ok(())
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

@@ -45,6 +45,7 @@ export type JsTransform = Transform
 export class Transform {
   constructor(path: string)
   withDelimiter(delimiter: number): void
+  appendLineNumber(): void
   addFilter(filter: Filter): void
   setColumnsTransform(columnTransform: (...args: any[]) => any): void
   saveCsv(path: string): Promise<void>

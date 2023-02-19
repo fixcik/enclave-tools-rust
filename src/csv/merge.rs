@@ -13,7 +13,6 @@ use futures::executor;
 use crate::{ MergeStrategy, DeduplicateStrategy };
 
 use super::deduplicate::{ Side };
-use super::utils::{ is_empty_file, create_empty_file };
 
 pub struct Merger {
     left_file_path: String,
@@ -59,11 +58,6 @@ impl Merger {
     }
 
     pub fn handle(self) -> Result<(), csv::Error> {
-        if is_empty_file(&self.left_file_path)? || is_empty_file(&self.right_file_path)? {
-            create_empty_file(&self.output)?;
-            return Ok(());
-        }
-
         let mut left_reader = self.get_left_reader()?;
         let mut right_reader = self.get_right_reader()?;
 
@@ -85,13 +79,17 @@ impl Merger {
             &right_headers
         );
 
-        let left_key_index = left_key_index.expect(
-            format!("Has column {} in left file", self.left_key).as_str()
-        );
+        let left_key_index = if left_headers.len() > 0 {
+            left_key_index.expect(format!("Has column {} in left file", self.left_key).as_str())
+        } else {
+            0
+        };
 
-        let right_key_index = right_key_index.expect(
-            format!("Has column {} in right file", self.right_key).as_str()
-        );
+        let right_key_index = if right_headers.len() > 0 {
+            right_key_index.expect(format!("Has column {} in right file", self.right_key).as_str())
+        } else {
+            0
+        };
 
         let mut writer = self.get_writer();
 
@@ -263,6 +261,9 @@ impl Merger {
         reader: &mut Reader<File>,
         key: &String
     ) -> Result<(Vec<Option<String>>, Option<usize>), csv::Error> {
+        if !reader.has_headers() {
+            return Ok((vec![], None));
+        }
         let mut key_index = None;
         let record: Vec<Option<String>> = reader
             .headers()?

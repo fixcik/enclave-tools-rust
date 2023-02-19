@@ -93,9 +93,7 @@ impl Merger {
 
         let mut deduplicate_handler = DeduplicateStrategy::create(
             self.deduplicate_strategy,
-            &mut writer,
-            left_key_index,
-            right_key_index
+            &mut writer
         );
 
         let mut left_lines = left_reader.into_byte_records();
@@ -155,12 +153,16 @@ impl Merger {
             };
 
             if need_left_push {
-                deduplicate_handler.add_row(left_record.clone(), Side::Left)?;
+                deduplicate_handler.add_row(left_record.clone(), left_value.to_vec(), Side::Left)?;
                 // self.write_row(&mut writer, &map_left_headers_to_union, left_record);
                 left_readed = false;
             }
             if need_right_push {
-                deduplicate_handler.add_row(right_record.clone(), Side::Right)?;
+                deduplicate_handler.add_row(
+                    right_record.clone(),
+                    right_value.to_vec(),
+                    Side::Right
+                )?;
                 // self.write_row(&mut writer, &map_right_headers_to_union, right_record);
                 right_readed = false;
             }
@@ -184,33 +186,49 @@ impl Merger {
         }
 
         if self.merge_strategy != MergeStrategy::And {
-            while let Some((left_record, _)) = &left_line {
+            while let Some((left_record, value)) = &left_line {
                 if left_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or | MergeStrategy::AndNot => {
-                            deduplicate_handler.add_row(left_record.clone(), Side::Left)?;
+                            deduplicate_handler.add_row(
+                                left_record.clone(),
+                                value.as_ref().unwrap().to_vec(),
+                                Side::Left
+                            )?;
                         }
                         _ => (),
                     }
                 }
 
-                left_line = self.read_record(&mut left_lines, &map_left_headers_to_union, None);
+                left_line = self.read_record(
+                    &mut left_lines,
+                    &map_left_headers_to_union,
+                    Some(left_key_index)
+                );
                 left_readed = true;
             }
         }
 
         if self.merge_strategy != MergeStrategy::And {
-            while let Some((right_record, _)) = &right_line {
+            while let Some((right_record, value)) = &right_line {
                 if right_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or => {
-                            deduplicate_handler.add_row(right_record.clone(), Side::Right)?;
+                            deduplicate_handler.add_row(
+                                right_record.clone(),
+                                value.as_ref().unwrap().to_vec(),
+                                Side::Right
+                            )?;
                         }
                         _ => (),
                     }
                 }
 
-                right_line = self.read_record(&mut right_lines, &map_right_headers_to_union, None);
+                right_line = self.read_record(
+                    &mut right_lines,
+                    &map_right_headers_to_union,
+                    Some(right_key_index)
+                );
                 right_readed = true;
             }
         }

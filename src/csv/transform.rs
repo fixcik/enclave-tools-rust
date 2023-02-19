@@ -11,6 +11,8 @@ use napi::{
     JsObject,
 };
 
+use super::utils::{ is_empty_file, create_empty_file };
+
 #[derive(Debug)]
 struct TransformError {
     message: String,
@@ -149,6 +151,10 @@ impl Transform {
     }
 
     pub fn save_to(&mut self, output: String) -> Result<(), Box<dyn Error>> {
+        if is_empty_file(&self.path)? {
+            create_empty_file(&output)?;
+            return Ok(());
+        }
         let mut reader = ReaderBuilder::new().delimiter(self.delimiter).from_path(&self.path)?;
         let orig_headers = reader
             .headers()?

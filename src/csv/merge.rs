@@ -13,6 +13,7 @@ use futures::executor;
 use crate::{ MergeStrategy, DeduplicateStrategy };
 
 use super::deduplicate::{ Side };
+use super::utils::{ is_empty_file, create_empty_file };
 
 pub struct Merger {
     left_file_path: String,
@@ -58,6 +59,11 @@ impl Merger {
     }
 
     pub fn handle(self) -> Result<(), csv::Error> {
+        if is_empty_file(&self.left_file_path)? || is_empty_file(&self.right_file_path)? {
+            create_empty_file(&self.output)?;
+            return Ok(());
+        }
+
         let mut left_reader = self.get_left_reader()?;
         let mut right_reader = self.get_right_reader()?;
 

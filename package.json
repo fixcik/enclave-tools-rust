@@ -1,6 +1,6 @@
 {
-  "name": "enclave-tools-rust",
-  "version": "0.0.0",
+  "name": "@aggregion/enclave-tools-rust",
+  "version": "0.4.3",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {

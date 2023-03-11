@@ -8,8 +8,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 csv = "1.1.6"
+futures = "0.3.26"
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "2.10.13", default-features = false, features = ["napi4"] }
+napi = { version = "2.10.13", default-features = false, features = [
+  "napi4",
+  "tokio_rt",
+] }
 napi-derive = "2.10.0"
 
 [build-dependencies]

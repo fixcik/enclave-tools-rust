@@ -4,6 +4,11 @@ use std::fs::File;
 use std::vec;
 
 use csv::{ ByteRecord, ByteRecordsIntoIter, Reader, ReaderBuilder, Writer, WriterBuilder };
+use napi::Task;
+use napi::bindgen_prelude::Undefined;
+use napi::threadsafe_function::{ ThreadsafeFunction, ErrorStrategy };
+
+use futures::executor;
 
 use crate::{ MergeStrategy, DeduplicateStrategy };
 
@@ -18,6 +23,7 @@ pub struct Merger {
     right_key: String,
     number_key: bool,
     output: String,
+    output_header_callback: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>,
 }
 
 fn to_number(x: &[u8]) -> i64 {
@@ -35,7 +41,8 @@ impl Merger {
         left_key: String,
         right_key: String,
         number_key: bool,
-        output: String
+        output: String,
+        output_header_callback: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>
     ) -> Merger {
         Merger {
             left_file_path,
@@ -46,6 +53,7 @@ impl Merger {
             right_key,
             output,
             number_key,
+            output_header_callback,
         }
     }
 
@@ -53,8 +61,12 @@ impl Merger {
         let mut left_reader = self.get_left_reader()?;
         let mut right_reader = self.get_right_reader()?;
 
-        let left_headers = self.get_headers(&mut left_reader)?;
-        let right_headers = self.get_headers(&mut right_reader)?;
+        let (left_headers, left_key_index) = self.get_headers(&mut left_reader, &self.left_key)?;
+        let (right_headers, right_key_index) = self.get_headers(
+            &mut right_reader,
+            &self.right_key
+        )?;
+
         let output_headers = self.get_output_headers(&left_headers, &right_headers);
 
         let map_left_headers_to_union = self.map_file_headers_to_output(
@@ -67,13 +79,17 @@ impl Merger {
             &right_headers
         );
 
-        let left_key_index = self
-            .get_header_pos(&output_headers, &self.left_key)
-            .expect(format!("Has column {} in left file", self.left_key).as_str());
+        let left_key_index = if left_headers.len() > 0 {
+            left_key_index.expect(format!("Has column {} in left file", self.left_key).as_str())
+        } else {
+            0
+        };
 
-        let right_key_index = self
-            .get_header_pos(&output_headers, &self.right_key)
-            .expect(format!("Has column {} in right file", self.right_key).as_str());
+        let right_key_index = if right_headers.len() > 0 {
+            right_key_index.expect(format!("Has column {} in right file", self.right_key).as_str())
+        } else {
+            0
+        };
 
         let mut writer = self.get_writer();
 
@@ -81,16 +97,22 @@ impl Merger {
 
         let mut deduplicate_handler = DeduplicateStrategy::create(
             self.deduplicate_strategy,
-            &mut writer,
-            left_key_index,
-            right_key_index
+            &mut writer
         );
 
         let mut left_lines = left_reader.into_byte_records();
         let mut right_lines = right_reader.into_byte_records();
 
-        let mut left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
-        let mut right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
+        let mut left_line = self.read_record(
+            &mut left_lines,
+            &map_left_headers_to_union,
+            Some(left_key_index)
+        );
+        let mut right_line = self.read_record(
+            &mut right_lines,
+            &map_right_headers_to_union,
+            Some(right_key_index)
+        );
 
         let mut old_left_value: Option<Vec<u8>> = None;
 
@@ -102,13 +124,13 @@ impl Merger {
         let mut old_left_eq_right;
         let mut need_read_left;
 
-        let mut left_value;
-        let mut right_value;
-
         let mut counter = 0;
-        while let (Some(left_record), Some(right_record)) = (&left_line, &right_line) {
-            left_value = left_record.get(left_key_index).unwrap();
-            right_value = right_record.get(right_key_index).unwrap();
+        while
+            let (Some((left_record, Some(left_value))), Some((right_record, Some(right_value)))) = (
+                &left_line,
+                &right_line,
+            )
+        {
             counter += 1;
 
             if counter % 100000 == 0 {
@@ -135,54 +157,82 @@ impl Merger {
             };
 
             if need_left_push {
-                deduplicate_handler.add_row(left_record.clone(), Side::Left)?;
+                deduplicate_handler.add_row(left_record.clone(), left_value.to_vec(), Side::Left)?;
                 // self.write_row(&mut writer, &map_left_headers_to_union, left_record);
                 left_readed = false;
             }
             if need_right_push {
-                deduplicate_handler.add_row(right_record.clone(), Side::Right)?;
+                deduplicate_handler.add_row(
+                    right_record.clone(),
+                    right_value.to_vec(),
+                    Side::Right
+                )?;
                 // self.write_row(&mut writer, &map_right_headers_to_union, right_record);
                 right_readed = false;
             }
 
             if cmp.is_le() && !need_read_left {
                 left_readed = true;
-                old_left_value = Some(left_value.to_owned());
-                left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
+                old_left_value = Some(left_value.to_vec());
+                left_line = self.read_record(
+                    &mut left_lines,
+                    &map_left_headers_to_union,
+                    Some(left_key_index)
+                );
             } else {
                 right_readed = true;
-                right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
+                right_line = self.read_record(
+                    &mut right_lines,
+                    &map_right_headers_to_union,
+                    Some(right_key_index)
+                );
             }
         }
 
         if self.merge_strategy != MergeStrategy::And {
-            while let Some(left_record) = &left_line {
+            while let Some((left_record, value)) = &left_line {
                 if left_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or | MergeStrategy::AndNot => {
-                            deduplicate_handler.add_row(left_record.clone(), Side::Left)?;
+                            deduplicate_handler.add_row(
+                                left_record.clone(),
+                                value.as_ref().unwrap().to_vec(),
+                                Side::Left
+                            )?;
                         }
                         _ => (),
                     }
                 }
 
-                left_line = self.read_record(&mut left_lines, &map_left_headers_to_union);
+                left_line = self.read_record(
+                    &mut left_lines,
+                    &map_left_headers_to_union,
+                    Some(left_key_index)
+                );
                 left_readed = true;
             }
         }
 
         if self.merge_strategy != MergeStrategy::And {
-            while let Some(right_record) = &right_line {
+            while let Some((right_record, value)) = &right_line {
                 if right_readed {
                     match &self.merge_strategy {
                         MergeStrategy::Or => {
-                            deduplicate_handler.add_row(right_record.clone(), Side::Right)?;
+                            deduplicate_handler.add_row(
+                                right_record.clone(),
+                                value.as_ref().unwrap().to_vec(),
+                                Side::Right
+                            )?;
                         }
                         _ => (),
                     }
                 }
 
-                right_line = self.read_record(&mut right_lines, &map_right_headers_to_union);
+                right_line = self.read_record(
+                    &mut right_lines,
+                    &map_right_headers_to_union,
+                    Some(right_key_index)
+                );
                 right_readed = true;
             }
         }
@@ -206,28 +256,57 @@ impl Merger {
         ReaderBuilder::new().delimiter(b'\t').from_path(path)
     }
 
-    fn get_headers(&self, reader: &mut Reader<File>) -> Result<Vec<String>, csv::Error> {
-        let record: Vec<String> = reader
+    fn get_headers(
+        &self,
+        reader: &mut Reader<File>,
+        key: &String
+    ) -> Result<(Vec<Option<String>>, Option<usize>), csv::Error> {
+        if !reader.has_headers() {
+            return Ok((vec![], None));
+        }
+        let mut key_index = None;
+        let record: Vec<Option<String>> = reader
             .headers()?
             .iter()
-            .map(|s| s.to_string())
+            .enumerate()
+            .map(|(index, s)| {
+                if s.to_string() == *key {
+                    key_index = Some(index);
+                }
+                self.format_header(s.to_string())
+            })
             .collect();
-        Ok(record)
+        Ok((record, key_index))
+    }
+
+    fn format_header(&self, header: String) -> Option<String> {
+        match self.output_header_callback.clone() {
+            Some(cb) => {
+                let res = cb.call_async::<Option<String>>(header);
+                let res = executor::block_on(res);
+                res.unwrap()
+            }
+            None => Some(header),
+        }
     }
 
     fn get_output_headers<'a>(
         &self,
-        left_headers: &'a Vec<String>,
-        right_headers: &'a Vec<String>
+        left_headers: &'a Vec<Option<String>>,
+        right_headers: &'a Vec<Option<String>>
     ) -> Vec<String> {
         let mut result: Vec<String> = vec![];
 
         for header in left_headers {
-            result.push(header.to_owned());
+            if let Some(header) = header {
+                result.push(header.to_string());
+            }
         }
 
         for header in right_headers {
-            result.push(header.to_owned());
+            if let Some(header) = header {
+                result.push(header.to_string());
+            }
         }
 
         let mut set = HashSet::new();
@@ -240,7 +319,7 @@ impl Merger {
     fn map_file_headers_to_output(
         &self,
         output_headers: &Vec<String>,
-        file_headers: &Vec<String>
+        file_headers: &Vec<Option<String>>
     ) -> HashMap<usize, Option<usize>> {
         output_headers
             .iter()
@@ -249,15 +328,16 @@ impl Merger {
             .collect()
     }
 
-    fn get_header_pos(&self, headers: &Vec<String>, name: &String) -> Option<usize> {
-        headers.iter().position(|col| col == name)
+    fn get_header_pos(&self, headers: &Vec<Option<String>>, name: &String) -> Option<usize> {
+        headers.iter().position(|col| &col.as_ref().unwrap_or(&"".to_string()) == &name)
     }
 
     fn read_record(
         &self,
         iter: &mut ByteRecordsIntoIter<File>,
-        mapping: &HashMap<usize, Option<usize>>
-    ) -> Option<ByteRecord> {
+        mapping: &HashMap<usize, Option<usize>>,
+        key_index: Option<usize>
+    ) -> Option<(ByteRecord, Option<Vec<u8>>)> {
         if let Some(Ok(record)) = iter.next() {
             let mut values: Vec<&[u8]> = Vec::with_capacity(mapping.len());
             for i in 0..mapping.len() {
@@ -268,12 +348,57 @@ impl Merger {
                     values.push(b"");
                 }
             }
-            return Some(ByteRecord::from_iter(&values));
+            let new_record = ByteRecord::from_iter(&values);
+            if let Some(key_index) = key_index {
+                let key_value = record.get(key_index).unwrap().to_owned();
+                return Some((new_record, Some(key_value.clone())));
+            }
+            return Some((new_record, None));
         }
         None
     }
 
     fn compare(&self, a: &[u8], b: &[u8]) -> Ordering {
         if self.number_key { to_number(a).cmp(&to_number(b)) } else { a.cmp(b) }
+    }
+}
+
+pub struct AsyncMergeTask {
+    pub left_path: String,
+    pub right_path: String,
+    pub output: String,
+    pub merge_strategy: MergeStrategy,
+    pub deduplicate_strategy: DeduplicateStrategy,
+    pub left_key: String,
+    pub right_key: String,
+    pub is_number_key: Option<bool>,
+    pub output_header_callback: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>,
+}
+
+impl Task for AsyncMergeTask {
+    type Output = Undefined;
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<()> {
+        let merger = Merger::create(
+            self.left_path.to_owned(),
+            self.right_path.to_owned(),
+            self.merge_strategy,
+            self.deduplicate_strategy,
+            self.left_key.to_owned(),
+            self.right_key.to_owned(),
+            self.is_number_key.unwrap_or(false),
+            self.output.to_owned(),
+            self.output_header_callback.clone()
+        );
+
+        merger
+            .handle()
+            .map_err(|err| napi::Error::new(napi::Status::GenericFailure, err.to_string()))?;
+        Ok(())
+    }
+
+    fn resolve(&mut self, _env: napi::Env, _output: ()) -> napi::Result<Undefined> {
+        Ok(())
     }
 }
